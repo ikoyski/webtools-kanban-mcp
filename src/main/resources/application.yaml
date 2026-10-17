@@ -1,0 +1,9 @@
+spring:
+  config:
+    import: "optional:configserver:http://localhost:8089"
+  cloud:
+    config:
+      username: user
+      password: password
+  application:
+    name: webtools-kanban-mcp
