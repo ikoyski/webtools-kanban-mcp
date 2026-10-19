@@ -24,8 +24,8 @@ public class BearerTokenFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Only protect the MCP endpoint; leave /actuator/health open for probes.
-        return !request.getRequestURI().startsWith("/kanban-mcp");
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return path.equals("/actuator") || path.startsWith("/actuator/");
     }
 
     @Override

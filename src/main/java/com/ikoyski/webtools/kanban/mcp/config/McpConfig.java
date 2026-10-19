@@ -44,4 +44,5 @@ public class McpConfig {
     public ToolCallbackProvider kanbanToolCallbacks(KanbanTools tools) {
         return MethodToolCallbackProvider.builder().toolObjects(tools).build();
     }
+    
 }
