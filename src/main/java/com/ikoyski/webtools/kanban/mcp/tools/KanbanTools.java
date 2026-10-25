@@ -1,7 +1,7 @@
 package com.ikoyski.webtools.kanban.mcp.tools;
 
-import java.util.HashMap;
-import java.util.Map;
+
+import java.util.List;
 
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -73,37 +73,39 @@ public class KanbanTools {
     // ---- cards ------------------------------------------------------------
 
     @Tool(name = "create_card",
-          description = "Create a card in a column.")
+          description = "Create a card in a column. The new card is added to that column.")
     public String createCard(
             @ToolParam(description = "Column id from get_board") String columnId,
             @ToolParam(description = "Card title") String title,
-            @ToolParam(description = "Card description, plain text", required = false) String description) {
-        return api.createCard(columnId, title, description);
+            @ToolParam(description = "Card description, plain text", required = false) String description,
+            @ToolParam(description = "LOW, MEDIUM (the default) or HIGH", required = false) String priority,
+            @ToolParam(description = "Due date as yyyy-MM-dd, for example 2026-12-31", required = false) String dueDate,
+            @ToolParam(description = "Up to 10 short labels", required = false) List<String> labels) {
+        return api.createCard(columnId, title, description, priority, dueDate, labels);
     }
 
     @Tool(name = "update_card",
-          description = "Change a card's title and/or description. Only the fields you provide change.")
+          description = "Change a card. Only the fields you provide change; a due date or labels cannot be cleared "
+                  + "with this tool. Providing labels replaces the whole label list.")
     public String updateCard(
             @ToolParam(description = "Card id from get_board") String cardId,
             @ToolParam(description = "New title", required = false) String title,
-            @ToolParam(description = "New description, plain text", required = false) String description) {
-        Map<String, Object> changes = new HashMap<>();
-        if (title != null) changes.put("title", title);
-        if (description != null) changes.put("description", description);  
-        if (changes.isEmpty()) {
-            return "Error: provide a title and/or description to change.";
-        }
-        return api.updateCard(cardId, changes);
+            @ToolParam(description = "New description, plain text", required = false) String description,
+            @ToolParam(description = "LOW, MEDIUM or HIGH", required = false) String priority,
+            @ToolParam(description = "Due date as yyyy-MM-dd", required = false) String dueDate,
+            @ToolParam(description = "Up to 10 short labels (replaces the existing labels)", required = false)
+                    List<String> labels) {
+        return api.updateCard(cardId, title, description, priority, dueDate, labels);
     }
 
     @Tool(name = "move_card",
-          description = "Move a card to another column (for example from 'In Progress' to 'Done'), "
-                  + "optionally at a position in that column.")
+          description = "Move a card to a column at a position, for example from 'In Progress' to 'Done'. "
+                  + "The position is required: the zero-based index in the destination column; to put the card last, "
+                  + "use the number of cards already in that column (from get_board).")
     public String moveCard(
             @ToolParam(description = "Card id from get_board") String cardId,
             @ToolParam(description = "Destination column id from get_board") String toColumnId,
-            @ToolParam(description = "Zero-based position in the destination column; omit to use the API default",
-                       required = false) Integer position) {
+            @ToolParam(description = "Zero-based position in the destination column") Integer position) {
         return api.moveCard(cardId, toColumnId, position);
     }
 

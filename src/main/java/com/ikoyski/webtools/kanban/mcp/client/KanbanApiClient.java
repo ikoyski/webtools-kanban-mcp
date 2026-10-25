@@ -1,5 +1,10 @@
 package com.ikoyski.webtools.kanban.mcp.client;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -35,6 +40,8 @@ public class KanbanApiClient {
     // from smuggling path segments such as "../boards" into the URL.
     private static final Pattern SAFE_ID = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
 
+    private static final int MAX_LABELS = 10;
+    private static final int MAX_LABEL_LENGTH = 50;
     private static final int MAX_NAME_LENGTH = 100;
 
     private final RestClient http;
@@ -99,33 +106,62 @@ public class KanbanApiClient {
 
     // ---- cards ------------------------------------------------------------
 
-    public String createCard(String columnId, String title, String description) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("columnId", columnId); 
-        body.put("title", title); 
-        if (description != null) {
-            body.put("description", description);
-        }
-        return call(() -> http.post().uri("/cards")
-                .contentType(MediaType.APPLICATION_JSON).body(body)
-                .retrieve().body(String.class));
+    public String createCard(String columnId, String title, String description,
+                             String priority, String dueDate, List<String> labels) {
+        return call(() -> {
+            Map<String, Object> body = new HashMap<>();
+            body.put("columnId", id(columnId));
+            body.put("title", cleanTitle(title));
+            if (description != null) {
+                body.put("description", description);
+            }
+            putCardOptions(body, priority, dueDate, labels);
+            return http.post().uri("/cards")
+                    .contentType(MediaType.APPLICATION_JSON).body(body)
+                    .retrieve().body(String.class);
+        });
     }
 
-    public String updateCard(String cardId, Map<String, Object> changes) {
-        return call(() -> http.patch().uri("/cards/{id}", id(cardId))
-                .contentType(MediaType.APPLICATION_JSON).body(changes)
-                .retrieve().body(String.class));
+    /**
+     * Changes only the fields that are provided (the backend ignores nulls, so a due date or labels
+     * cannot be cleared through this tool).
+     */
+    public String updateCard(String cardId, String title, String description,
+                             String priority, String dueDate, List<String> labels) {
+        return call(() -> {
+            Map<String, Object> body = new HashMap<>();
+            if (title != null) {
+                body.put("title", cleanTitle(title));
+            }
+            if (description != null) {
+                body.put("description", description);
+            }
+            putCardOptions(body, priority, dueDate, labels);
+            if (body.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "provide at least one field to change (title, description, priority, dueDate or labels).");
+            }
+            return http.patch().uri("/cards/{id}", id(cardId))
+                    .contentType(MediaType.APPLICATION_JSON).body(body)
+                    .retrieve().body(String.class);
+        });
     }
 
+    /** The backend requires the position, so it is required here too. */
     public String moveCard(String cardId, String columnId, Integer position) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("columnId", columnId); 
-        if (position != null) {
-            body.put("position", position); 
-        }
-        return call(() -> http.patch().uri("/cards/{id}/move", id(cardId))
-                .contentType(MediaType.APPLICATION_JSON).body(body)
-                .retrieve().body(String.class));
+        return call(() -> {
+            if (position == null || position < 0) {
+                throw new IllegalArgumentException(
+                        "position is required: the zero-based index in the destination column "
+                                + "(use the number of cards already in that column to put the card last).");
+            }
+            Map<String, Object> body = new HashMap<>();
+            body.put("columnId", id(columnId));
+            body.put("position", position);
+            return http.patch().uri("/cards/{id}/move", id(cardId))
+                    .contentType(MediaType.APPLICATION_JSON).body(body)
+                    .retrieve().body(String.class);
+        });
     }
 
     public String archiveCard(String cardId) {
@@ -166,6 +202,47 @@ public class KanbanApiClient {
                     "invalid id. Ids come from list_boards or get_board and contain only letters, digits, - and _.");
         }
         return value;
+    }
+
+    private static String cleanTitle(String value) {
+        String title = value == null ? "" : value.trim();
+        if (title.isEmpty()) {
+            throw new IllegalArgumentException("title must not be empty.");
+        }
+        return title;
+    }
+
+    /** Validates the optional card fields here so a mistake gives a clear message, not a backend error. */
+    private static void putCardOptions(Map<String, Object> body, String priority, String dueDate, List<String> labels) {
+        if (priority != null && !priority.isBlank()) {
+            String p = priority.trim().toUpperCase(Locale.ROOT);
+            if (!p.equals("LOW") && !p.equals("MEDIUM") && !p.equals("HIGH")) {
+                throw new IllegalArgumentException("priority must be LOW, MEDIUM or HIGH.");
+            }
+            body.put("priority", p);
+        }
+        if (dueDate != null && !dueDate.isBlank()) {
+            try {
+                body.put("dueDate", LocalDate.parse(dueDate.trim()).toString());
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException("dueDate must be a date like 2026-12-31.");
+            }
+        }
+        if (labels != null) {
+            if (labels.size() > MAX_LABELS) {
+                throw new IllegalArgumentException("at most " + MAX_LABELS + " labels.");
+            }
+            List<String> cleaned = new ArrayList<>();
+            for (String label : labels) {
+                String l = label == null ? "" : label.trim();
+                if (l.isEmpty() || l.length() > MAX_LABEL_LENGTH) {
+                    throw new IllegalArgumentException(
+                            "each label must be 1 to " + MAX_LABEL_LENGTH + " characters.");
+                }
+                cleaned.add(l);
+            }
+            body.put("labels", cleaned);
+        }
     }
 
     private static String cleanName(String value) {
