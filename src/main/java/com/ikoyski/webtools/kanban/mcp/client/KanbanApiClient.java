@@ -282,8 +282,12 @@ public class KanbanApiClient {
                 default -> "Error: the Kanban API returned HTTP " + s + ".";
             };
         }
-        if (e instanceof ResourceAccessException) {
-            return "Error: could not reach the Kanban API (timeout or connection failure).";
+        if (e instanceof ResourceAccessException accessException) {
+            Throwable cause = accessException.getMostSpecificCause();
+            // Keep diagnostic details in server logs only; never expose URLs, headers or tokens to the model.
+            log.warn("I/O failure calling the Kanban API ({}): {}",
+                    cause.getClass().getSimpleName(), cause.getMessage(), accessException);
+            return "Error: could not complete the request to the Kanban API (network, timeout or HTTP client failure).";
         }
         log.warn("Unexpected failure calling the Kanban API", e);
         return "Error: unexpected failure.";
