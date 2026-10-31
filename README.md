@@ -336,12 +336,14 @@ auth:
       resource: https://api.ikoyski.top/kanban-mcp/mcp
     chatgpt:
       client-id: kanban-chatgpt
+      client-secret: ${AUTH_CHATGPT_CLIENT_SECRET:}
       redirect-uris:
         - ${CHATGPT_OAUTH_REDIRECT_URI}
     gemini:
       client-id: kanban-gemini
+      client-secret: ${AUTH_GEMINI_CLIENT_SECRET:}
       redirect-uris:
         - ${GEMINI_OAUTH_REDIRECT_URI}
 ```
 
-The ChatGPT and Gemini entries are optional and are registered only when their redirect URI lists are populated. These are public clients and require PKCE; they do not receive client secrets or refresh tokens. Verify that the specific ChatGPT/Gemini product and account tier support remote MCP connections and OAuth before enabling its client entry.
+The ChatGPT and Gemini entries are optional and are registered only when their redirect URI lists are populated. Both require PKCE. Without a client secret they are public clients and do not receive refresh tokens; if the provider supports confidential OAuth, configure a secret to enable rotating refresh tokens. Verify that the specific ChatGPT/Gemini product and account tier support remote MCP connections and OAuth before enabling its client entry.
