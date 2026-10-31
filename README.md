@@ -1,8 +1,10 @@
 # WebTools Kanban MCP
 
-A Spring Boot MCP server that exposes a safe, focused set of [WebTools Kanban](https://github.com/ikoyski/webtools-kanban) operations to MCP clients and AI assistants.
+A Spring Boot MCP server that exposes a safe, focused set of operations for the Kanban application in [ikoyski/kanban](https://github.com/ikoyski/kanban) through its existing authenticated Kanban API.
 
 The MCP server is a stateless adapter: it does not store Kanban data and it does not act as a shared service account. The caller's Bearer token is forwarded to the existing Kanban API so the normal gateway/backend authentication and authorization rules remain in effect.
+
+> **Repository relationship:** `ikoyski/kanban` is the user-facing Kanban frontend. The MCP server does **not** call that frontend repository directly; it calls the Kanban REST API exposed through `api.ikoyski.top/kanban-backend`. The frontend's API client is a useful reference for the API contract.
 
 ## Architecture
 
@@ -22,11 +24,20 @@ The MCP server is a stateless adapter: it does not store Kanban data and it does
              │ same caller JWT
              ▼
 ┌──────────────────────────┐
-│ API Gateway / Kanban API │
+│ API Gateway              │
+│ api.ikoyski.top          │
 └────────────┬─────────────┘
+             │ /kanban-backend/v1
              ▼
 ┌──────────────────────────┐
-│ Kanban backend           │
+│ Kanban backend API       │
+└────────────┬─────────────┘
+             ▲
+             │ REST API
+             │
+┌──────────────────────────┐
+│ ikoyski/kanban           │
+│ Kanban frontend          │
 └──────────────────────────┘
 ```
 
@@ -82,6 +93,34 @@ The tool surface favors useful and reversible Kanban operations, particularly `a
 - A maximum of 10 labels is accepted, with a maximum length of 50 characters per label.
 - Names are limited to 100 characters.
 - Card/comment content returned from the API is treated as untrusted user data. It is sanitized and capped before being returned to the model.
+
+## Kanban API integration
+
+The MCP targets the existing Kanban REST API using the base URL configured for the application. The frontend repository, [ikoyski/kanban](https://github.com/ikoyski/kanban), currently uses the following API base and `/v1` routes in its JavaScript API client:
+
+```text
+https://api.ikoyski.top/kanban-backend
+```
+
+Examples of routes relevant to the MCP include:
+
+```text
+GET    /v1/boards
+GET    /v1/boards/{id}
+POST   /v1/boards
+POST   /v1/columns
+PATCH  /v1/columns/{id}
+POST   /v1/cards
+PATCH  /v1/cards/{id}
+PATCH  /v1/cards/{id}/move
+POST   /v1/cards/{id}/archive
+POST   /v1/cards/{id}/restore
+GET    /v1/cards/board/{boardId}/archived
+GET    /v1/comments/card/{cardId}
+POST   /v1/comments/card/{cardId}
+```
+
+The frontend API client contains additional operations that are deliberately not exposed through the MCP. When changing the MCP API client, verify the actual backend contract rather than assuming every frontend operation should become an AI tool.
 
 ## Technology
 
