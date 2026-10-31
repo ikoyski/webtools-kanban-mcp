@@ -2,7 +2,9 @@
 
 ## Project overview
 
-`webtools-kanban-mcp` is a Spring Boot 3.4.2 / Java 21 MCP server that exposes a controlled set of WebTools Kanban operations as MCP tools. The MCP server does not own Kanban data or authorization; it forwards the caller's Bearer token to the existing Kanban API and lets that API enforce authentication and resource access.
+`webtools-kanban-mcp` is a Spring Boot 3.4.2 / Java 21 MCP server that exposes a controlled set of Kanban operations as MCP tools. The MCP server does not own Kanban data or authorization; it forwards the caller's Bearer token to the existing Kanban API and lets that API enforce authentication and resource access.
+
+The user-facing Kanban application is maintained in [`ikoyski/kanban`](https://github.com/ikoyski/kanban). That repository is the frontend and its JavaScript API client is a useful reference for the REST contract. The MCP server does not call the frontend directly; it calls the Kanban backend API through the configured API gateway/base URL.
 
 The intended request flow is:
 
@@ -19,6 +21,10 @@ API Gateway / Kanban API
         |
         v
 Kanban backend
+        ^
+        |
+        | REST API
+ikoyski/kanban frontend
 ```
 
 The MCP endpoint is provided by Spring AI's WebMVC MCP server starter. The application is stateless with respect to authentication: the token is read from each request, placed in a request context, forwarded for outbound Kanban calls, and cleared in a `finally` block.
@@ -97,6 +103,8 @@ The local `application.yaml` imports `http://localhost:8089`. The deployment-ori
 
 `KanbanApiClient` should remain the single boundary between MCP tools and the Kanban HTTP API. Prefer adding a small API-client method and then exposing it through `KanbanTools`, rather than putting HTTP calls directly in tool methods.
 
+The Kanban frontend repository [`ikoyski/kanban`](https://github.com/ikoyski/kanban) currently references the API through `https://api.ikoyski.top/kanban-backend` with `/v1` endpoints. Use that frontend API client as a contract reference, but verify the actual backend DTOs/endpoints when making changes.
+
 Keep these conventions:
 
 1. Validate inputs before making a request.
@@ -105,6 +113,7 @@ Keep these conventions:
 4. Map common HTTP failures to safe messages (401, 403, 404, 429, validation errors).
 5. Sanitize and cap user-controlled response text before returning it to the model.
 6. Avoid exposing backend implementation details or sensitive response bodies unnecessarily.
+7. Do not assume every operation available in the frontend API should become an MCP tool.
 
 ## Known implementation details
 
@@ -112,7 +121,7 @@ Keep these conventions:
 - `update_card` performs partial updates; omitted fields are not changed. The current implementation cannot clear a due date or labels because null fields are omitted. Providing `labels` replaces the complete label list.
 - `move_card` requires a zero-based destination position. To append a card, use the number of cards already in the destination column.
 - `create_column` uses the backend's default placement; there is no column-reordering tool.
-- The API client contains a TODO noting that some request DTO field names should be verified against the backend. When modifying those calls, verify the actual Kanban backend DTOs/endpoints rather than relying on guesses.
+- The API client contains a TODO noting that some request DTO field names should be verified against the backend. When modifying those calls, verify the actual Kanban backend DTOs/endpoints rather than relying on guesses from the frontend alone.
 
 ## Development workflow
 
