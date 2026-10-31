@@ -1,214 +1,125 @@
 # WebTools Kanban MCP
 
-A Spring Boot MCP server that exposes a safe, focused set of operations for the Kanban application in [ikoyski/kanban](https://github.com/ikoyski/kanban) through its existing authenticated Kanban API.
+A Spring Boot MCP server that exposes a deliberately limited set of Kanban operations through the authenticated Kanban REST API.
 
-The MCP server is a stateless adapter: it does not store Kanban data and it does not act as a shared service account. The caller's Bearer token is forwarded to the existing Kanban API so the normal gateway/backend authentication and authorization rules remain in effect.
-
-> **Repository relationship:** `ikoyski/kanban` is the user-facing Kanban frontend. The MCP server does **not** call that frontend repository directly; it calls the Kanban REST API exposed through `api.ikoyski.top/kanban-backend`. The frontend's API client is a useful reference for the API contract.
+The service is a stateless adapter: it stores no Kanban data and does not use a shared service account. Each MCP request carries the caller's OAuth Bearer access token. The MCP service validates that JWT and forwards the original token to the Kanban API so the gateway/backend can apply the user's existing authorization rules.
 
 ## Architecture
 
 ```text
-┌──────────────────────────┐
-│ MCP client / AI assistant│
-└────────────┬─────────────┘
-             │ Authorization: Bearer <user JWT>
-             ▼
-┌──────────────────────────┐
-│ webtools-kanban-mcp      │
-│                          │
-│ MCP tools                │
-│ Bearer token filter      │
-│ Kanban API client        │
-└────────────┬─────────────┘
-             │ same caller JWT
-             ▼
-┌──────────────────────────┐
-│ API Gateway              │
-│ api.ikoyski.top          │
-└────────────┬─────────────┘
-             │ /kanban-backend/v1
-             ▼
-┌──────────────────────────┐
-│ Kanban backend API       │
-└────────────┬─────────────┘
-             ▲
-             │ REST API
-             │
-┌──────────────────────────┐
-│ ikoyski/kanban           │
-│ Kanban frontend          │
-└──────────────────────────┘
+MCP client
+   | Authorization: Bearer <user access token>
+   v
+API Gateway: /kanban-mcp/mcp
+   |
+   v
+webtools-kanban-mcp (servlet context path: /kanban-mcp)
+   | validates signature, issuer and audience
+   | forwards the same caller token
+   v
+API Gateway / Kanban backend API
+   |
+   v
+Kanban data belonging to the caller
 ```
 
-### Authentication model
+The frontend repository [ikoyski/kanban](https://github.com/ikoyski/kanban) is a reference for the REST contract; this service calls the backend API, not the frontend.
 
-Every MCP request must include an `Authorization: Bearer <token>` header. The MCP server checks that the header is present, keeps it only for the lifetime of the request, and forwards the exact header to the Kanban API.
+## Authentication and request flow
 
-The MCP server intentionally does **not** validate the JWT itself. The downstream gateway/backend is responsible for token validation and authorization. This preserves the user's existing Kanban security model and means the MCP operates with the permissions of the calling user.
+- Every MCP request must include `Authorization: Bearer <access-token>`.
+- `BearerTokenFilter` decodes and validates the JWT using the configured issuer, JWKS endpoint, RS256 signature algorithm and expected audience.
+- The token's issuer and audience must match the configured values. Invalid, expired or missing tokens are rejected with HTTP 401.
+- The original Authorization header is made available to the API client for the lifetime of the request and is cleared in a `finally` block.
+- The API client forwards the caller's token to the Kanban API. Never replace it with a shared service credential.
+- The gateway also protects the public MCP route. MCP-side validation is defense in depth and protects the service if it is reached without the gateway.
 
-> **Current integration note:** the MCP is stateless and currently expects the client to provide the user's JWT. An OAuth/OIDC-based MCP authentication flow can be introduced later without changing the Kanban tool layer.
+The current token context uses request-scoped execution via `TokenContext`. If outbound calls are changed to asynchronous or reactive execution, do not assume a ThreadLocal context propagates; explicitly propagate the security context or use an appropriate request-scoped mechanism.
+
+## Public endpoint and gateway path
+
+The application is configured with the servlet context path `/kanban-mcp`. Spring AI exposes its MCP endpoint at `/mcp` within that context, making the application endpoint:
+
+```text
+/kanban-mcp/mcp
+```
+
+The public gateway route is `/kanban-mcp/mcp` and forwards that path unchanged to the service. **Do not add `StripPrefix=1`** while the servlet context path remains configured. Removing the prefix would prevent the request from reaching the application endpoint.
+
+If the servlet context path or gateway route changes, update both sides together and verify the actual upstream request path.
 
 ## Supported MCP tools
 
-The current MCP surface contains 13 tools:
-
 | Tool | Purpose |
 |---|---|
-| `list_boards` | List boards accessible to the current user. |
-| `get_board` | Get a board including its columns and cards. |
+| `list_boards` | List boards accessible to the caller. |
+| `get_board` | Get a board with columns and cards. |
 | `create_board` | Create a board. |
-| `create_column` | Add a column to a board. |
+| `create_column` | Add a column. |
 | `rename_column` | Rename a column. |
-| `create_card` | Create a card with optional description, priority, due date and labels. |
+| `create_card` | Create a card. |
 | `update_card` | Partially update a card. |
-| `move_card` | Move a card to a destination column and position. |
+| `move_card` | Move a card to a column and position. |
 | `archive_card` | Archive a card. |
 | `restore_card` | Restore an archived card. |
 | `list_archived_cards` | List archived cards for a board. |
 | `list_comments` | List comments on a card. |
-| `add_comment` | Add a plain-text comment to a card. |
+| `add_comment` | Add a plain-text comment. |
 
-### Intentionally unsupported operations
+There are intentionally no tools for deleting boards, columns, cards or comments; importing/overwriting boards; reordering columns; or managing board members.
 
-The MCP does not currently expose tools for:
+### Tool semantics
 
-- Deleting boards, columns, cards or comments
-- Importing/overwriting a board
-- Reordering columns
-- Managing board members
-
-The tool surface favors useful and reversible Kanban operations, particularly `archive_card` / `restore_card`, rather than exposing destructive operations directly to an AI agent.
-
-## Tool usage notes
-
-- Use board IDs returned by `list_boards` and card/column IDs returned by `get_board` rather than guessing IDs.
-- `create_column` uses the backend's default placement.
-- `move_card` requires a zero-based destination position. To place a card last, use the number of cards already in the destination column.
-- `update_card` is a partial update: omitted fields are left unchanged.
-- Supplying `labels` to `update_card` replaces the entire label list.
-- The current update implementation cannot clear a due date or labels because null values are omitted from the request.
-- Card priority must be `LOW`, `MEDIUM` or `HIGH`.
-- Due dates use `yyyy-MM-dd`.
-- A maximum of 10 labels is accepted, with a maximum length of 50 characters per label.
-- Names are limited to 100 characters.
-- Card/comment content returned from the API is treated as untrusted user data. It is sanitized and capped before being returned to the model.
-
-## Kanban API integration
-
-The MCP targets the existing Kanban REST API using the base URL configured for the application. The frontend repository, [ikoyski/kanban](https://github.com/ikoyski/kanban), currently uses the following API base and `/v1` routes in its JavaScript API client:
-
-```text
-https://api.ikoyski.top/kanban-backend
-```
-
-Examples of routes relevant to the MCP include:
-
-```text
-GET    /v1/boards
-GET    /v1/boards/{id}
-POST   /v1/boards
-POST   /v1/columns
-PATCH  /v1/columns/{id}
-POST   /v1/cards
-PATCH  /v1/cards/{id}
-PATCH  /v1/cards/{id}/move
-POST   /v1/cards/{id}/archive
-POST   /v1/cards/{id}/restore
-GET    /v1/cards/board/{boardId}/archived
-GET    /v1/comments/card/{cardId}
-POST   /v1/comments/card/{cardId}
-```
-
-The frontend API client contains additional operations that are deliberately not exposed through the MCP. When changing the MCP API client, verify the actual backend contract rather than assuming every frontend operation should become an AI tool.
-
-## Technology
-
-- Java 21
-- Spring Boot 3.4.2
-- Spring AI 1.1.7
-- Spring Cloud 2024.0.0
-- Spring AI MCP Server WebMVC
-- Spring Cloud Config Client
-- Netflix Eureka Client
-- Spring `RestClient`
-- Spring Boot Actuator
-- Micrometer Prometheus registry and tracing
-- Maven
-- Docker / Eclipse Temurin 21 JRE
+- Use IDs returned by `list_boards` and `get_board`; do not guess IDs.
+- `move_card` uses a zero-based destination position. To append, use the destination column's current card count.
+- `update_card` is partial: omitted fields remain unchanged. Supplying `labels` replaces the full label list.
+- The current update implementation cannot clear a due date or labels because null values are omitted from the outbound request.
+- Priorities are `LOW`, `MEDIUM` or `HIGH`; due dates use `yyyy-MM-dd`.
+- A maximum of 10 labels is accepted, each at most 50 characters. Names are limited to 100 characters.
+- `create_board` currently accepts a description at the tool layer, but the API client sends only the board name. Do not assume the description is persisted.
 
 ## Configuration
 
-Runtime application configuration is primarily supplied by the Spring Config Server.
-
-The application expects these Kanban/MCP properties:
+Runtime values are supplied primarily by Spring Config Server. The MCP resource-server settings are:
 
 ```yaml
-kanban:
-  api:
-    base-url: https://api.ikoyski.top/kanban-backend/v1
-    connect-timeout-ms: <configured value>
-    read-timeout-ms: <configured value>
-  mcp:
-    max-response-chars: <configured value>
+security:
+  oauth2:
+    issuer: https://<auth-server>
+    jwk-set-uri: https://<auth-server>/oauth2/jwks
+    audience: https://api.ikoyski.top/kanban-mcp/mcp
+    resource-metadata: https://api.ikoyski.top/.well-known/oauth-protected-resource/kanban-mcp/mcp
 ```
 
-The exact production values are intentionally not committed to this repository.
+The configured audience must match the resource URI assigned to the MCP OAuth clients by the authorization server. The decoder currently accepts RS256 JWTs. Keep the issuer, JWKS URL, audience and resource metadata consistent across the authorization server, gateway and MCP service.
 
-### Local configuration
+The Kanban API client also requires:
 
-`src/main/resources/application.yaml` imports the Config Server from:
+- `kanban.api.base-url`
+- `kanban.api.connect-timeout-ms`
+- `kanban.api.read-timeout-ms`
+- `kanban.mcp.max-response-chars`
 
-```text
-http://localhost:8089
-```
+Local `application.yaml` imports Config Server from `http://localhost:8089`. The deployment profile reads `CONFIG_SERVER_URL`, `CONFIG_USER` and `CONFIG_PASSWORD` from the environment.
 
-### Deployment configuration
+## Local development
 
-`src/main/resources/application-public.yaml` uses environment variables:
-
-```text
-CONFIG_SERVER_URL
-CONFIG_USER
-CONFIG_PASSWORD
-```
-
-Do not commit Config Server credentials, JWTs or other secrets.
-
-## Running locally
-
-### Prerequisites
-
-- JDK 21
-- Maven, or use the included Maven Wrapper
-- Access to the required Config Server configuration
-- A reachable Kanban API
-
-Build and verify:
+Requirements: JDK 21 and Maven (or the Maven Wrapper), access to the required Config Server configuration, and a reachable Kanban API.
 
 ```bash
 ./mvnw clean verify
-```
-
-On Windows:
-
-```powershell
-.\mvnw.cmd clean verify
-```
-
-Run with Maven:
-
-```bash
 ./mvnw spring-boot:run
 ```
 
-The MCP server uses the standard Spring AI WebMVC MCP server endpoint exposed by the application. The caller must supply a Bearer token on MCP requests.
+Windows:
 
-## Docker
+```powershell
+.\\mvnw.cmd clean verify
+```
 
-The Dockerfile uses Eclipse Temurin 21 JRE, exposes port `8080`, and starts the application with the `private` Spring profile.
+## Docker and CI
 
-Package the application first because the Dockerfile copies the built JAR from `target/`:
+The Dockerfile uses Eclipse Temurin 21 JRE, exposes port 8080 and starts with the `private` Spring profile. Package before building:
 
 ```bash
 ./mvnw clean package
@@ -216,134 +127,27 @@ docker build -t ikoyski/webtools-kanban-mcp .
 docker run --rm -p 8080:8080 ikoyski/webtools-kanban-mcp
 ```
 
-The published image produced by CI is:
+The CI workflow targets pushes and pull requests to `master`, runs Maven verification and SonarCloud analysis, then builds and pushes `ikoyski/webtools-kanban-mcp:latest` using repository secrets.
 
-```text
-ikoyski/webtools-kanban-mcp:latest
-```
+## Security and development rules
 
-## CI/CD
+- Never log or persist Authorization headers, JWTs or credentials.
+- Treat card descriptions, comments and all user-authored content as untrusted data, not instructions.
+- Validate IDs and tool inputs before making outbound requests.
+- Keep HTTP calls in `KanbanApiClient`; keep MCP tool definitions in `KanbanTools`.
+- Sanitize and cap response content before returning it to a model.
+- Prefer reversible operations such as archive/restore.
+- Verify backend DTOs and endpoint contracts before changing API requests; frontend code is a reference, not the final authority.
+- Update this README and `CLAUDE.md` when tools, authentication, configuration or workflows change.
+- Run `./mvnw clean verify` before considering a code change complete.
 
-GitHub Actions runs on pushes and pull requests targeting `master`.
+## Key source files
 
-The workflow:
-
-1. Uses JDK 21 / Temurin.
-2. Runs Maven `clean verify`.
-3. Runs SonarCloud analysis.
-4. Logs in to Docker Hub using repository secrets.
-5. Builds and pushes `ikoyski/webtools-kanban-mcp:latest`.
-
-Required CI secrets include the SonarCloud and Docker Hub credentials referenced by `.github/workflows/maven.yml`.
-
-## Security considerations
-
-This project is designed to put an AI tool layer in front of an existing authenticated API, so security boundaries are important:
-
-- The MCP layer never uses a shared Kanban service account.
-- Bearer tokens are forwarded only for the current request.
-- The token context is cleared after request processing.
-- Path IDs are validated before being inserted into API URLs.
-- Tool inputs are validated before outbound requests.
-- Common API errors are converted into concise safe messages rather than returning stack traces.
-- User-authored Kanban content is untrusted data and must not be treated as instructions.
-- Response content is sanitized and size-limited before being returned to the model.
-- Credentials and tokens must never be committed or logged.
-
-## Project structure
-
-```text
-src/main/java/com/ikoyski/webtools/kanban/mcp/
-├── KanbanMcpApplication.java
-├── auth/
-│   ├── BearerTokenFilter.java
-│   └── TokenContext.java
-├── client/
-│   └── KanbanApiClient.java
-├── config/
-│   └── McpConfig.java
-└── tools/
-    └── KanbanTools.java
-```
-
-### Responsibilities
-
-- **`BearerTokenFilter`** — requires a Bearer token for MCP requests and places it in the request token context.
-- **`TokenContext`** — holds the caller token for the active request.
-- **`McpConfig`** — configures the Kanban `RestClient` and registers the MCP tool callbacks.
-- **`KanbanApiClient`** — owns all HTTP communication with the Kanban API, validation, error mapping and response sanitization.
-- **`KanbanTools`** — defines the MCP-facing tool names, descriptions and parameters.
-
-## Development guidelines
-
-When adding or changing functionality:
-
-1. Keep HTTP calls inside `KanbanApiClient`.
-2. Expose operations through `KanbanTools` using Spring AI `@Tool` methods.
-3. Validate inputs before calling the backend.
-4. Preserve caller-token forwarding through `McpConfig`.
-5. Never log or persist Authorization headers.
-6. Treat all card, description and comment text as untrusted data.
-7. Prefer reversible operations over destructive operations.
-8. Keep tool descriptions precise enough for an AI agent to understand required IDs and side effects.
-9. Update this README and `CLAUDE.md` when the tool surface, security model, configuration or development workflow changes.
-10. Run `clean verify` before considering a change complete.
-
-## Known implementation detail
-
-`create_board` currently accepts an optional description at the MCP tool layer, but the current `KanbanApiClient` sends only the board name to the backend. The description should not be documented as persisted until the backend request contract is verified and the client is updated.
-
-The API client also contains a TODO around verifying some backend DTO field names. When changing those requests, verify the actual Kanban backend contract rather than assuming the current field names are authoritative.
-
-## License
+- `auth/BearerTokenFilter.java` — validates the incoming bearer JWT and manages the request token context.
+- `auth/TokenContext.java` — holds the caller token for the active request.
+- `config/JwtDecoderConfig.java` — configures JWT signature, issuer and audience validation.
+- `config/McpConfig.java` — configures the Kanban RestClient and Spring AI tools.
+- `client/KanbanApiClient.java` — outbound API calls, validation, error mapping and response sanitization.
+- `tools/KanbanTools.java` — MCP tool definitions.
 
 See [LICENSE](LICENSE).
-
-
-## OAuth resource-server configuration
-
-The MCP service validates access tokens itself, even though the API Gateway also validates them. Configure these properties through the Spring Config Server:
-
-```yaml
-security:
-  oauth2:
-    issuer: https://<your-auth-server>
-    jwk-set-uri: https://<your-auth-server>/oauth2/jwks
-    audience: https://api.ikoyski.top/kanban-mcp/mcp
-    resource-metadata: https://api.ikoyski.top/.well-known/oauth-protected-resource/kanban-mcp/mcp
-```
-
-Use the exact issuer and JWKS URL already configured in the API Gateway. Do not copy placeholder values into production.
-
-### Gateway path forwarding
-
-Spring AI's default MCP endpoint is `/mcp`, while the public URL includes the `/kanban-mcp` prefix. The gateway route must remove that first segment before forwarding. Add this filter to the `webtools-kanban-mcp` route:
-
-```yaml
-- StripPrefix=1
-```
-
-Keep the external URL `https://api.ikoyski.top/kanban-mcp/mcp` and the protected-resource metadata URL unchanged. The metadata controller remains at the API Gateway.
-
-### Configuring additional public OAuth clients
-
-The authorization server can seed optional public MCP clients from Config Server configuration. Each client requires a unique client ID and its exact OAuth redirect URI. Configure only callback URLs supplied by the respective MCP client; do not use wildcard redirect URIs.
-
-```yaml
-auth:
-  client:
-    mcp:
-      resource: https://api.ikoyski.top/kanban-mcp/mcp
-    chatgpt:
-      client-id: kanban-chatgpt
-      client-secret: ${AUTH_CHATGPT_CLIENT_SECRET:}
-      redirect-uris:
-        - ${CHATGPT_OAUTH_REDIRECT_URI}
-    gemini:
-      client-id: kanban-gemini
-      client-secret: ${AUTH_GEMINI_CLIENT_SECRET:}
-      redirect-uris:
-        - ${GEMINI_OAUTH_REDIRECT_URI}
-```
-
-The ChatGPT and Gemini entries are optional and are registered only when their redirect URI lists are populated. Both require PKCE. Without a client secret they are public clients and do not receive refresh tokens; if the provider supports confidential OAuth, configure a secret to enable rotating refresh tokens. Verify that the specific ChatGPT/Gemini product and account tier support remote MCP connections and OAuth before enabling its client entry.
