@@ -6,7 +6,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import java.net.http.HttpClient;
+import java.time.Duration;
+
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import com.ikoyski.webtools.kanban.mcp.auth.TokenContext;
@@ -21,9 +24,13 @@ public class McpConfig {
             @Value("${kanban.api.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${kanban.api.read-timeout-ms}") int readTimeoutMs) {
 
-        var factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(connectTimeoutMs);
-        factory.setReadTimeout(readTimeoutMs);
+        // HttpURLConnection (used by SimpleClientHttpRequestFactory) does not support PATCH.
+        // Use the JDK HttpClient so PATCH-based card/column updates work consistently.
+        var httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                .build();
+        var factory = new JdkClientHttpRequestFactory(httpClient);
+        factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
 
         return RestClient.builder()
                 .baseUrl(baseUrl)
