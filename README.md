@@ -298,3 +298,50 @@ The API client also contains a TODO around verifying some backend DTO field name
 ## License
 
 See [LICENSE](LICENSE).
+
+
+## OAuth resource-server configuration
+
+The MCP service validates access tokens itself, even though the API Gateway also validates them. Configure these properties through the Spring Config Server:
+
+```yaml
+security:
+  oauth2:
+    issuer: https://<your-auth-server>
+    jwk-set-uri: https://<your-auth-server>/oauth2/jwks
+    audience: https://api.ikoyski.top/kanban-mcp/mcp
+    resource-metadata: https://api.ikoyski.top/.well-known/oauth-protected-resource/kanban-mcp/mcp
+```
+
+Use the exact issuer and JWKS URL already configured in the API Gateway. Do not copy placeholder values into production.
+
+### Gateway path forwarding
+
+Spring AI's default MCP endpoint is `/mcp`, while the public URL includes the `/kanban-mcp` prefix. The gateway route must remove that first segment before forwarding. Add this filter to the `webtools-kanban-mcp` route:
+
+```yaml
+- StripPrefix=1
+```
+
+Keep the external URL `https://api.ikoyski.top/kanban-mcp/mcp` and the protected-resource metadata URL unchanged. The metadata controller remains at the API Gateway.
+
+### Configuring additional public OAuth clients
+
+The authorization server can seed optional public MCP clients from Config Server configuration. Each client requires a unique client ID and its exact OAuth redirect URI. Configure only callback URLs supplied by the respective MCP client; do not use wildcard redirect URIs.
+
+```yaml
+auth:
+  client:
+    mcp:
+      resource: https://api.ikoyski.top/kanban-mcp/mcp
+    chatgpt:
+      client-id: kanban-chatgpt
+      redirect-uris:
+        - ${CHATGPT_OAUTH_REDIRECT_URI}
+    gemini:
+      client-id: kanban-gemini
+      redirect-uris:
+        - ${GEMINI_OAUTH_REDIRECT_URI}
+```
+
+The ChatGPT and Gemini entries are optional and are registered only when their redirect URI lists are populated. These are public clients and require PKCE; they do not receive client secrets or refresh tokens. Verify that the specific ChatGPT/Gemini product and account tier support remote MCP connections and OAuth before enabling its client entry.
