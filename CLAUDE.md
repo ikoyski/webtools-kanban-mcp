@@ -43,6 +43,8 @@ The audience must equal the MCP resource URI registered by the authorization ser
 - `auth/BearerTokenFilter.java` — bearer-token requirement, JWT validation and request token context.
 - `auth/TokenContext.java` — per-request caller token.
 - `config/JwtDecoderConfig.java` — RS256, issuer and audience validation.
+
+The JWKS client uses a load-balanced `RestTemplate`, so `security.oauth2.jwk-set-uri` may use the authorization server's Eureka service ID (for example `http://WEBTOOLS-AUTH/oauth2/jwks`). The issuer remains the canonical public issuer URL; never substitute the internal discovery URL for issuer validation.
 - `config/McpConfig.java` — load-balanced Kanban RestClient and Spring AI tool registration.
 - `client/KanbanApiClient.java` — all outbound Kanban API calls, input validation, error mapping and response sanitization.
 - `tools/KanbanTools.java` — MCP tool names, descriptions and parameters.
