@@ -96,6 +96,8 @@ security:
 
 The configured audience must match the resource URI assigned to the MCP OAuth clients by the authorization server. The decoder currently accepts RS256 JWTs. Keep the issuer, JWKS URL, audience and resource metadata consistent across the authorization server, gateway and MCP service.
 
+The JWKS HTTP client is also Eureka-aware. Configure `security.oauth2.jwk-set-uri` with the authorization-server service ID, for example `http://WEBTOOLS-AUTH/oauth2/jwks`, provided that this is the exact Eureka application name and its advertised instance address is reachable from the MCP container. Keep `security.oauth2.issuer` set to the canonical public issuer URL (for example `https://auth.ikoyski.top`); do not replace the issuer with the internal Eureka URL. JWK retrieval uses a load-balanced `RestTemplate`, while JWT issuer, timestamp, RS256 signature and audience validation remain enabled.
+
 The Kanban API client uses Eureka service ID `WEBTOOLS-KANBAN-BACKEND`; Spring Cloud LoadBalancer resolves the registered instance. Set `kanban.api.base-url` to `http://WEBTOOLS-KANBAN-BACKEND/kanban-backend/v1` (no fixed port; Eureka supplies the instance host and port). The backend's advertised Eureka hostname/IP and port must be reachable from the MCP container. Do not assume that a successful Eureka registration proves network reachability.
 
 The Kanban API client also requires:
