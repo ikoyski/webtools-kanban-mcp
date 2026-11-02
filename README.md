@@ -2,7 +2,7 @@
 
 A Spring Boot MCP server that exposes a deliberately limited set of Kanban operations through the authenticated Kanban REST API.
 
-The service is a stateless adapter: it stores no Kanban data and does not use a shared service account. Each MCP request carries the caller's OAuth Bearer access token. The MCP service validates that JWT and forwards the original token to the Kanban API so the gateway/backend can apply the user's existing authorization rules.
+The service is a stateless adapter: it stores no Kanban data and does not use a shared service account. Each MCP request carries the caller's OAuth Bearer access token. The MCP service validates that JWT and forwards the original token to the Kanban backend, which applies the user's authorization rules.
 
 ## Architecture
 
@@ -10,14 +10,16 @@ The service is a stateless adapter: it stores no Kanban data and does not use a 
 MCP client
    | Authorization: Bearer <user access token>
    v
-API Gateway: /kanban-mcp/mcp
+Cloudflare / API Gateway: /kanban-mcp/mcp
    |
    v
 webtools-kanban-mcp (servlet context path: /kanban-mcp)
    | validates signature, issuer and audience
    | forwards the same caller token
+   | RestClient + Spring Cloud LoadBalancer
+   | resolves WEBTOOLS-KANBAN-BACKEND through Eureka
    v
-API Gateway / Kanban backend API
+Kanban backend (private service-to-service call)
    |
    v
 Kanban data belonging to the caller
@@ -31,7 +33,8 @@ The frontend repository [ikoyski/kanban](https://github.com/ikoyski/kanban) is a
 - `BearerTokenFilter` decodes and validates the JWT using the configured issuer, JWKS endpoint, RS256 signature algorithm and expected audience.
 - The token's issuer and audience must match the configured values. Invalid, expired or missing tokens are rejected with HTTP 401.
 - The original Authorization header is made available to the API client for the lifetime of the request and is cleared in a `finally` block.
-- The API client forwards the caller's token to the Kanban API. Never replace it with a shared service credential.
+- The API client forwards the caller's token directly to the Kanban backend using Eureka service discovery and Spring Cloud LoadBalancer. Never replace it with a shared service credential.
+- MCP-to-backend traffic bypasses the public API Gateway and its Redis gateway rate limiter. Keep backend authentication and authorization enabled; private routing is not an authorization boundary.
 - The gateway also protects the public MCP route. MCP-side validation is defense in depth and protects the service if it is reached without the gateway.
 
 The current token context uses request-scoped execution via `TokenContext`. If outbound calls are changed to asynchronous or reactive execution, do not assume a ThreadLocal context propagates; explicitly propagate the security context or use an appropriate request-scoped mechanism.
@@ -93,6 +96,8 @@ security:
 
 The configured audience must match the resource URI assigned to the MCP OAuth clients by the authorization server. The decoder currently accepts RS256 JWTs. Keep the issuer, JWKS URL, audience and resource metadata consistent across the authorization server, gateway and MCP service.
 
+The Kanban API client uses Eureka service ID `WEBTOOLS-KANBAN-BACKEND`; Spring Cloud LoadBalancer resolves the registered instance. Set `kanban.api.base-url` to `http://WEBTOOLS-KANBAN-BACKEND/kanban-backend/v1` (no fixed port; Eureka supplies the instance host and port). The backend's advertised Eureka hostname/IP and port must be reachable from the MCP container. Do not assume that a successful Eureka registration proves network reachability.
+
 The Kanban API client also requires:
 
 - `kanban.api.base-url`
@@ -146,7 +151,7 @@ The CI workflow targets pushes and pull requests to `master`, runs Maven verific
 - `auth/BearerTokenFilter.java` — validates the incoming bearer JWT and manages the request token context.
 - `auth/TokenContext.java` — holds the caller token for the active request.
 - `config/JwtDecoderConfig.java` — configures JWT signature, issuer and audience validation.
-- `config/McpConfig.java` — configures the Kanban RestClient and Spring AI tools.
+- `config/McpConfig.java` — configures the load-balanced Kanban RestClient and Spring AI tools.
 - `client/KanbanApiClient.java` — outbound API calls, validation, error mapping and response sanitization.
 - `tools/KanbanTools.java` — MCP tool definitions.
 
