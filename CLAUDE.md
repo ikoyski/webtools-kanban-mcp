@@ -4,7 +4,7 @@
 
 This repository contains `webtools-kanban-mcp`, a Java 21 / Spring Boot MCP server exposing a controlled set of Kanban operations. It is a stateless adapter: it owns no Kanban data and must act with the permissions of the calling user.
 
-The user-facing frontend is [ikoyski/kanban](https://github.com/ikoyski/kanban). This MCP service calls the Kanban backend REST API through the configured API gateway; it does not call the frontend.
+The user-facing frontend is [ikoyski/kanban](https://github.com/ikoyski/kanban). This MCP service calls the Kanban backend REST API directly over the private service network using Eureka discovery; it does not call the frontend or route internal backend calls through the public API gateway.
 
 ## Critical architecture and routing facts
 
@@ -19,10 +19,10 @@ The user-facing frontend is [ikoyski/kanban](https://github.com/ikoyski/kanban).
 1. The MCP client sends an OAuth Bearer access token.
 2. `BearerTokenFilter` validates the JWT signature using the configured JWKS URL and RS256, then validates issuer and audience.
 3. Missing or invalid tokens are rejected with 401.
-4. The original caller token is stored only for the current request and forwarded unchanged by `KanbanApiClient` to the Kanban API.
+4. The original caller token is stored only for the current request and forwarded unchanged by `KanbanApiClient` to the Kanban backend over the private service network.
 5. `TokenContext` is cleared in a `finally` block.
 
-The API gateway also protects the route. MCP-side JWT validation is defense in depth, not a replacement for gateway/backend authorization. Never use a shared service account or silently bypass token validation to fix an integration problem.
+The API gateway protects the public MCP route. MCP-side JWT validation is defense in depth, not a replacement for backend authorization. MCP-to-backend calls use Eureka/LoadBalancer and bypass the public gateway; the backend must continue validating the caller JWT and enforcing its own authorization. Never use a shared service account or silently bypass token validation to fix an integration problem.
 
 The token context is ThreadLocal-based. If code becomes asynchronous/reactive, explicitly propagate the token/security context; ThreadLocal values do not automatically follow work across threads.
 
@@ -43,7 +43,7 @@ The audience must equal the MCP resource URI registered by the authorization ser
 - `auth/BearerTokenFilter.java` — bearer-token requirement, JWT validation and request token context.
 - `auth/TokenContext.java` — per-request caller token.
 - `config/JwtDecoderConfig.java` — RS256, issuer and audience validation.
-- `config/McpConfig.java` — Kanban RestClient and Spring AI tool registration.
+- `config/McpConfig.java` — load-balanced Kanban RestClient and Spring AI tool registration.
 - `client/KanbanApiClient.java` — all outbound Kanban API calls, input validation, error mapping and response sanitization.
 - `tools/KanbanTools.java` — MCP tool names, descriptions and parameters.
 - `src/main/resources/application.yaml` — local Config Server import.
@@ -86,7 +86,7 @@ Tool semantics to preserve:
 
 ## Configuration and local development
 
-Most runtime configuration comes from Spring Config Server. Required API properties include `kanban.api.base-url`, `kanban.api.connect-timeout-ms`, `kanban.api.read-timeout-ms` and `kanban.mcp.max-response-chars`.
+Most runtime configuration comes from Spring Config Server. Required API properties include `kanban.api.base-url`, `kanban.api.connect-timeout-ms`, `kanban.api.read-timeout-ms` and `kanban.mcp.max-response-chars`. The base URL should use the Eureka service ID, for example `http://WEBTOOLS-KANBAN-BACKEND/kanban-backend/v1`; do not hardcode a container IP or port. Spring Cloud LoadBalancer resolves the service ID through Eureka. Ensure the backend instance address advertised by Eureka is reachable from the MCP container. Internal calls bypass the gateway Redis rate limiter, but backend JWT validation and authorization remain mandatory.
 
 Local Config Server URL: `http://localhost:8089`. Deployment configuration uses `CONFIG_SERVER_URL`, `CONFIG_USER` and `CONFIG_PASSWORD`. Never add credentials or tokens to source control.
 
