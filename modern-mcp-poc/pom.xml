@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.ikoyski.webtools.kanban</groupId>
+  <artifactId>kanban-mcp-modern-poc</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>Kanban MCP Modern Protocol POC</name>
+  <description>Isolated proof of concept for the MCP 2026-07-28 stateless server protocol.</description>
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <mcp-java-sdk.version>2.2.0-M1</mcp-java-sdk.version>
+    <tomcat.version>11.0.2</tomcat.version>
+    <jakarta.servlet.version>6.1.0</jakarta.servlet.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId><artifactId>mcp</artifactId>
+      <version>${mcp-java-sdk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.servlet</groupId><artifactId>jakarta.servlet-api</artifactId>
+      <version>${jakarta.servlet.version}</version><scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.tomcat.embed</groupId><artifactId>tomcat-embed-core</artifactId>
+      <version>${tomcat.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId><artifactId>logback-classic</artifactId>
+      <version>1.5.15</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration><mainClass>com.ikoyski.webtools.kanban.mcp.poc.ModernMcpPocServer</mainClass></configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
