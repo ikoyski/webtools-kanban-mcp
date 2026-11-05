@@ -147,7 +147,7 @@ public final class ModernKanbanMcpServer {
     default:throw new IllegalArgumentException("unknown tool");
    }
    String token=CALLER_TOKEN.get();if(token==null)throw new IllegalStateException("caller token unavailable");
-   HttpRequest.Builder b=HttpRequest.newBuilder(cfg.apiBase.resolve(path)).timeout(Duration.ofSeconds(8)).header("Authorization",token).header("Accept","application/json");
+   String base=cfg.apiBase.toString().replaceAll("/+$","");\n   HttpRequest.Builder b=HttpRequest.newBuilder(URI.create(base+path)).timeout(Duration.ofSeconds(8)).header("Authorization",token).header("Accept","application/json");
    if(method.equals("GET"))b.GET();else b.header("Content-Type","application/json").method(method,HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body)));
    HttpResponse<String> response=http.send(b.build(),HttpResponse.BodyHandlers.ofString());
    int status=response.statusCode();if(status>=200&&status<300)return sanitize(response.body());
@@ -156,7 +156,7 @@ public final class ModernKanbanMcpServer {
   private static String id(Map<String,Object>a,String k){String v=requiredArg(a,k);if(!SAFE_ID.matcher(v).matches())throw new IllegalArgumentException("invalid "+k);return v;}
   private static String requiredArg(Map<String,Object>a,String k){Object v=a.get(k);if(!(v instanceof String s)||s.isBlank())throw new IllegalArgumentException(k+" is required");return s.trim();}
   private static void copy(Map<String,Object>a,Map<String,Object>b,String...keys){for(String k:keys)if(a.containsKey(k)&&a.get(k)!=null)b.put(k,a.get(k));}
-  private static void validateCard(Map<String,Object>b){Object p=b.get("priority");if(p!=null&&!Set.of("LOW","MEDIUM","HIGH").contains(p.toString().toUpperCase(Locale.ROOT)))throw new IllegalArgumentException("priority must be LOW, MEDIUM or HIGH");Object d=b.get("dueDate");if(d!=null)try{java.time.LocalDate.parse(d.toString());}catch(Exception e){throw new IllegalArgumentException("dueDate must be yyyy-MM-dd");}Object labels=b.get("labels");if(labels instanceof List<?> l&&(l.size()>10||l.stream().anyMatch(x->!(x instanceof String s)||s.isBlank()||s.length()>50)))throw new IllegalArgumentException("labels must contain up to 10 non-empty strings of at most 50 characters");}
+  private static void validateCard(Map<String,Object>b){Object p=b.get("priority");if(p!=null){String normalized=p.toString().toUpperCase(Locale.ROOT);if(!Set.of("LOW","MEDIUM","HIGH").contains(normalized))throw new IllegalArgumentException("priority must be LOW, MEDIUM or HIGH");b.put("priority",normalized);}Object d=b.get("dueDate");if(d!=null)try{java.time.LocalDate.parse(d.toString());}catch(Exception e){throw new IllegalArgumentException("dueDate must be yyyy-MM-dd");}Object labels=b.get("labels");if(labels instanceof List<?> l&&(l.size()>10||l.stream().anyMatch(x->!(x instanceof String s)||s.isBlank()||s.length()>50)))throw new IllegalArgumentException("labels must contain up to 10 non-empty strings of at most 50 characters");}
   private static String sanitize(String s){if(s==null||s.isBlank())return "OK";String clean=s.replaceAll("(?i)</p>|<br\\s*/?>","\\n").replaceAll("</?[a-zA-Z][^>]*>","");return truncate(clean,12000);}
   private static String truncate(String s,int n){return s.length()>n?s.substring(0,n)+"... [truncated]":s;}
  }
