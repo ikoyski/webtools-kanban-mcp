@@ -1,4 +1,4 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the execution time.
+# This workflow builds the production MCP application and retains the isolated protocol POC checks.
 
 name: Java CI with Maven
 
@@ -24,16 +24,13 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build with Maven Then Analyze With Sonar
+      - name: Build production application and analyze with Sonar
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: mvn -B clean verify --file pom.xml org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=ikoyski_webtools-kanban-mcp -Dsonar.organization=ikoyski -Dsonar.host.url=https://sonarcloud.io
 
-      - name: Build modern MCP protocol POC
+      - name: Verify modern MCP protocol POC
         run: mvn -B -f modern-mcp-poc/pom.xml clean verify
-
-      - name: Build authenticated modern MCP replacement
-        run: mvn -B -f modern-server/pom.xml clean verify
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
