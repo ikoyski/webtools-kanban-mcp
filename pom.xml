@@ -4,19 +4,18 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.4.2</version>
-    <relativePath></relativePath>
-    <!-- lookup parent from repository -->
+    <version>4.1.2</version>
+    <relativePath/>
   </parent>
   <groupId>com.ikoyki.webtools.kanban</groupId>
   <artifactId>kanban-mcp</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>kanban-mcp</name>
-  <description>MCP for WebTools Kanban</description>
+  <description>Modern stateless MCP server for WebTools Kanban</description>
   <properties>
     <java.version>21</java.version>
-    <spring-cloud.version>2024.0.0</spring-cloud.version>
-    <spring-ai.version>1.1.7</spring-ai.version>
+    <spring-cloud.version>2025.1.4</spring-cloud.version>
+    <mcp-java-sdk.version>2.2.0-M1</mcp-java-sdk.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -27,16 +26,18 @@
         <type>pom</type>
         <scope>import</scope>
       </dependency>
-      <dependency>
-        <groupId>org.springframework.ai</groupId>
-        <artifactId>spring-ai-bom</artifactId>
-        <version>${spring-ai.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
     </dependencies>
   </dependencyManagement>
   <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId>
+      <artifactId>mcp</artifactId>
+      <version>${mcp-java-sdk.version}</version>
+    </dependency>
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
@@ -48,10 +49,6 @@
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-starter-config</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.ai</groupId>
-      <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
     </dependency>
     <dependency>
       <groupId>io.micrometer</groupId>
@@ -88,7 +85,6 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
   <build>
     <plugins>
       <plugin>
@@ -122,9 +118,7 @@
         <executions>
           <execution>
             <id>get-the-git-infos</id>
-            <goals>
-              <goal>revision</goal>
-            </goals>
+            <goals><goal>revision</goal></goals>
             <phase>initialize</phase>
             <configuration>
               <includeOnlyProperties>
@@ -140,33 +134,15 @@
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>0.8.12</version>
         <executions>
-          <execution>
-            <goals>
-              <goal>prepare-agent</goal>
-            </goals>
-          </execution>
-          <!-- attached to Maven verify phase -->
-          <execution>
-            <id>report</id>
-            <goals>
-              <goal>report</goal>
-            </goals>
-            <phase>test</phase>
-          </execution>
+          <execution><goals><goal>prepare-agent</goal></goals></execution>
+          <execution><id>report</id><goals><goal>report</goal></goals><phase>test</phase></execution>
         </executions>
       </plugin>
       <plugin>
         <groupId>com.github.ekryd.sortpom</groupId>
         <artifactId>sortpom-maven-plugin</artifactId>
         <version>4.0.0</version>
-        <executions>
-          <execution>
-            <goals>
-              <goal>sort</goal>
-            </goals>
-            <phase>verify</phase>
-          </execution>
-        </executions>
+        <executions><execution><goals><goal>sort</goal></goals><phase>verify</phase></execution></executions>
       </plugin>
     </plugins>
   </build>
