@@ -69,15 +69,20 @@ public class McpConfig {
                 .build();
     }
 
+    @Bean(destroyMethod = "closeGracefully")
+    public HttpServletMcpTransport modernMcpTransport(McpServer server) {
+        return HttpServletMcpTransport.builder(server)
+                .endpoint("/mcp")
+                .build();
+    }
+
     /**
      * Register the modern Servlet 6.1 transport only at /mcp. The application's
      * existing servlet context path (normally /kanban-mcp) remains unchanged.
      */
     @Bean
-    public ServletRegistrationBean<HttpServletMcpTransport> modernMcpServlet(McpServer server) {
-        HttpServletMcpTransport transport = HttpServletMcpTransport.builder(server)
-                .endpoint("/mcp")
-                .build();
+    public ServletRegistrationBean<HttpServletMcpTransport> modernMcpServlet(
+            HttpServletMcpTransport transport) {
         ServletRegistrationBean<HttpServletMcpTransport> registration =
                 new ServletRegistrationBean<>(transport, "/mcp");
         registration.setName("modernMcpTransport");
