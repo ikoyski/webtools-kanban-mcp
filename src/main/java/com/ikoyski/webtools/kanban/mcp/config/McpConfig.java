@@ -7,15 +7,10 @@ import io.modelcontextprotocol.modern.McpSchema.Implementation;
 import io.modelcontextprotocol.modern.server.McpServer;
 import io.modelcontextprotocol.modern.server.transport.HttpServletMcpTransport;
 import io.modelcontextprotocol.modern.server.feature.ToolsFeature;
-import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.restclient.autoconfigure.RestClientBuilderConfigurer;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
-import org.springframework.context.annotation.Scope;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -26,33 +21,8 @@ import com.ikoyski.webtools.kanban.mcp.tools.ModernKanbanToolRepository;
 @Configuration
 public class McpConfig {
 
-    /**
-     * A plain, primary builder is required for infrastructure clients such as
-     * Eureka's own HTTP client. It must not apply service-ID load balancing to
-     * Eureka's configured server URL (for example, http://localhost:8088/eureka).
-     */
-    @Bean
-    @Primary
-    @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-    public RestClient.Builder directRestClientBuilder(RestClientBuilderConfigurer configurer) {
-        return configurer.configure(RestClient.builder());
-    }
-
-    /**
-     * Enables Eureka service-ID resolution for application URLs such as
-     * http://WEBTOOLS-KANBAN-BACKEND/... . Keep this builder separate from the
-     * plain builder used by Eureka infrastructure.
-     */
-    @Bean
-    @LoadBalanced
-    @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-    public RestClient.Builder loadBalancedRestClientBuilder(RestClientBuilderConfigurer configurer) {
-        return configurer.configure(RestClient.builder());
-    }
-
     @Bean
     public RestClient kanbanRestClient(
-            @LoadBalanced RestClient.Builder restClientBuilder,
             @Value("${kanban.api.base-url}") String baseUrl,
             @Value("${kanban.api.connect-timeout-ms}") int connectTimeoutMs,
             @Value("${kanban.api.read-timeout-ms}") int readTimeoutMs) {
@@ -61,14 +31,15 @@ public class McpConfig {
         var httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
+
         var factory = new JdkClientHttpRequestFactory(httpClient);
         factory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
 
-        return restClientBuilder
+        return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(factory)
                 .requestInterceptor((request, body, execution) -> {
-                    // Forward the caller's own token. Never use a shared service account.
+                    // Forward the caller's own token.
                     String auth = TokenContext.get();
                     if (auth != null) {
                         request.getHeaders().set(HttpHeaders.AUTHORIZATION, auth);

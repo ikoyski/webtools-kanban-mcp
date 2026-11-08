@@ -5,7 +5,7 @@
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>4.1.2</version>
-    <relativePath/>
+    <relativePath></relativePath>
   </parent>
   <groupId>com.ikoyki.webtools.kanban</groupId>
   <artifactId>kanban-mcp</artifactId>
@@ -122,7 +122,9 @@
         <executions>
           <execution>
             <id>get-the-git-infos</id>
-            <goals><goal>revision</goal></goals>
+            <goals>
+              <goal>revision</goal>
+            </goals>
             <phase>initialize</phase>
             <configuration>
               <includeOnlyProperties>
@@ -138,15 +140,32 @@
         <artifactId>jacoco-maven-plugin</artifactId>
         <version>0.8.12</version>
         <executions>
-          <execution><goals><goal>prepare-agent</goal></goals></execution>
-          <execution><id>report</id><goals><goal>report</goal></goals><phase>test</phase></execution>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <goals>
+              <goal>report</goal>
+            </goals>
+            <phase>test</phase>
+          </execution>
         </executions>
       </plugin>
       <plugin>
         <groupId>com.github.ekryd.sortpom</groupId>
         <artifactId>sortpom-maven-plugin</artifactId>
         <version>4.0.0</version>
-        <executions><execution><goals><goal>sort</goal></goals><phase>verify</phase></execution></executions>
+        <executions>
+          <execution>
+            <goals>
+              <goal>sort</goal>
+            </goals>
+            <phase>verify</phase>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

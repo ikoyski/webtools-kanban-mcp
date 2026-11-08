@@ -1,7 +1,6 @@
 package com.ikoyski.webtools.kanban.mcp.auth;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.ClientHttpRequestFactory;
@@ -20,13 +19,7 @@ import org.springframework.web.client.RestTemplate;
 @Configuration
 public class JwtDecoderConfig {
 
-    /**
-     * Resolves the configured authorization-server service ID through Eureka when retrieving
-     * the public JWK set. The JWK endpoint is used only to obtain public verification keys;
-     * issuer validation still uses the canonical issuer URL.
-     */
     @Bean
-    @LoadBalanced
     public RestTemplate jwkSetRestTemplate() {
         return new RestTemplate();
     }
