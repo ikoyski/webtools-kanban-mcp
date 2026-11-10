@@ -118,6 +118,7 @@
         <version>4.9.10</version>
         <configuration>
           <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <failOnNoGitDirectory>false</failOnNoGitDirectory>
         </configuration>
         <executions>
           <execution>
