@@ -1,6 +1,6 @@
 spring:
   config:
-    import: "optional:configserver:${CONFIG_SERVER_URL}"
+    import: "configserver:${CONFIG_SERVER_URL}"
   cloud:
     config:
       username: ${CONFIG_USER}
