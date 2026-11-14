@@ -7,3 +7,10 @@ spring:
       password: ${CONFIG_PASSWORD}
   application:
     name: webtools-kanban-mcp
+
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    root: INFO
