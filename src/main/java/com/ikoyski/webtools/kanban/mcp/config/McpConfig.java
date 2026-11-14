@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.slf4j.MDC;
 
 import com.ikoyski.webtools.kanban.mcp.auth.TokenContext;
 import com.ikoyski.webtools.kanban.mcp.tools.ModernKanbanToolRepository;
@@ -43,6 +44,10 @@ public class McpConfig {
                     String auth = TokenContext.get();
                     if (auth != null) {
                         request.getHeaders().set(HttpHeaders.AUTHORIZATION, auth);
+                    }
+                    String requestId = MDC.get("requestId");
+                    if (requestId != null && !requestId.isBlank()) {
+                        request.getHeaders().set("X-Request-Id", requestId);
                     }
                     return execution.execute(request, body);
                 })
