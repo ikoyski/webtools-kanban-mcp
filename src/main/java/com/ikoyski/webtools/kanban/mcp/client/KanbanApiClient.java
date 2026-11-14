@@ -271,7 +271,7 @@ public class KanbanApiClient {
         }
         if (e instanceof RestClientResponseException r) {
             int s = r.getStatusCode().value();
-            log.debug("Kanban API returned HTTP {}", s);
+            log.warn("Kanban API returned HTTP {}", s);
             return switch (s) {
                 case 400, 422 -> "Error: the API rejected the request (HTTP " + s + "): "
                         + sanitize(truncate(r.getResponseBodyAsString(), 300));
@@ -289,7 +289,7 @@ public class KanbanApiClient {
                     cause.getClass().getSimpleName(), cause.getMessage(), accessException);
             return "Error: could not complete the request to the Kanban API (network, timeout or HTTP client failure).";
         }
-        log.warn("Unexpected failure calling the Kanban API", e);
+        log.error("Unexpected failure calling the Kanban API", e);
         return "Error: unexpected failure.";
     }
 
