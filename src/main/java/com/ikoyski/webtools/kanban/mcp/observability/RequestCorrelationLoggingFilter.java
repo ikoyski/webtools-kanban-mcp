@@ -55,18 +55,33 @@ public class RequestCorrelationLoggingFilter extends OncePerRequestFilter {
                     ? path.substring(request.getContextPath().length()) : path;
 
             if (!isHealthOrMetricsPath(relativePath)) {
+                String mcpMethod = safeHeader(request.getHeader("Mcp-Method"));
+                String protocolVersion = safeHeader(request.getHeader("MCP-Protocol-Version"));
+                String mcpName = safeHeader(request.getHeader("Mcp-Name"));
+                String contentType = safeHeader(request.getContentType());
+                String accept = safeHeader(request.getHeader("Accept"));
+                boolean bearerPresent = request.getHeader("Authorization") != null;
+                boolean sessionIdPresent = request.getHeader("Mcp-Session-Id") != null;
+
+                String details = "method={} path={} status={} durationMs={} mcpMethod={} "
+                        + "protocolVersion={} mcpName={} contentType={} accept={} "
+                        + "bearerPresent={} sessionIdPresent={}";
                 if (failure != null) {
-                    log.error("http_request_failed method={} path={} status={} durationMs={}",
-                            request.getMethod(), path, status, durationMs, failure);
+                    log.error("http_request_failed " + details, request.getMethod(), path, status, durationMs,
+                            mcpMethod, protocolVersion, mcpName, contentType, accept,
+                            bearerPresent, sessionIdPresent, failure);
                 } else if (status >= 500) {
-                    log.error("http_request_completed method={} path={} status={} durationMs={}",
-                            request.getMethod(), path, status, durationMs);
+                    log.error("http_request_completed " + details, request.getMethod(), path, status, durationMs,
+                            mcpMethod, protocolVersion, mcpName, contentType, accept,
+                            bearerPresent, sessionIdPresent);
                 } else if (status >= 400) {
-                    log.warn("http_request_completed method={} path={} status={} durationMs={}",
-                            request.getMethod(), path, status, durationMs);
+                    log.warn("http_request_completed " + details, request.getMethod(), path, status, durationMs,
+                            mcpMethod, protocolVersion, mcpName, contentType, accept,
+                            bearerPresent, sessionIdPresent);
                 } else {
-                    log.info("http_request_completed method={} path={} status={} durationMs={}",
-                            request.getMethod(), path, status, durationMs);
+                    log.info("http_request_completed " + details, request.getMethod(), path, status, durationMs,
+                            mcpMethod, protocolVersion, mcpName, contentType, accept,
+                            bearerPresent, sessionIdPresent);
                 }
             }
 
@@ -76,6 +91,14 @@ public class RequestCorrelationLoggingFilter extends OncePerRequestFilter {
                 MDC.put("requestId", previousRequestId);
             }
         }
+    }
+
+    private static String safeHeader(String value) {
+        if (value == null || value.isBlank()) {
+            return "-";
+        }
+        String sanitized = value.replaceAll("[\\r\\n\\t]", " ").trim();
+        return sanitized.length() > 120 ? sanitized.substring(0, 120) : sanitized;
     }
 
     private static String validatedRequestId(String candidate) {
