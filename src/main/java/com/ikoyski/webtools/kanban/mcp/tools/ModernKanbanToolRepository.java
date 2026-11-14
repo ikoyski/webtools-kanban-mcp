@@ -5,6 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.ikoyski.webtools.kanban.mcp.client.KanbanApiClient;
 import io.modelcontextprotocol.modern.McpSchema.CallToolOutcome;
 import io.modelcontextprotocol.modern.McpSchema.CallToolRequest;
@@ -24,6 +27,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ModernKanbanToolRepository implements McpSyncToolRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(ModernKanbanToolRepository.class);
 
     private final KanbanApiClient api;
     private final Map<String, Tool> tools = new LinkedHashMap<>();
@@ -138,15 +143,27 @@ public class ModernKanbanToolRepository implements McpSyncToolRepository {
 
     @Override
     public McpSyncResponse<CallToolOutcome> call(McpRequestContext context, CallToolRequest request) {
+        String toolName = request.name();
+        long startedAt = System.nanoTime();
         try {
             Map<String, Object> args = request.arguments() == null ? Map.of() : request.arguments();
-            String result = invoke(request.name(), args);
+            String result = invoke(toolName, args);
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+            if (result != null && result.startsWith("Error:")) {
+                log.warn("mcp_tool_call_failed tool={} durationMs={}", toolName, durationMs);
+            } else {
+                log.info("mcp_tool_call_completed tool={} durationMs={}", toolName, durationMs);
+            }
             return McpSyncResponse.result(CallToolResult.builder()
                     .addContent(TextContent.builder(result).build())
                     .build());
         } catch (IllegalArgumentException ex) {
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+            log.warn("mcp_tool_call_rejected tool={} durationMs={}", toolName, durationMs);
             return error(ex.getMessage());
         } catch (RuntimeException ex) {
+            long durationMs = (System.nanoTime() - startedAt) / 1_000_000L;
+            log.error("mcp_tool_call_failed tool={} durationMs={}", toolName, durationMs, ex);
             return error("The Kanban operation could not be completed.");
         }
     }
