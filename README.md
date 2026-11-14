@@ -36,7 +36,7 @@ The frontend repository [ikoyski/kanban](https://github.com/ikoyski/kanban) is a
 - The servlet context path remains `/kanban-mcp`; the transport endpoint is `/mcp`. The effective service path is `/kanban-mcp/mcp`.
 - The public gateway route forwards `/kanban-mcp/mcp` unchanged. **Do not add `StripPrefix=1`** while the servlet context path remains configured.
 - The modern HTTP transport requires `Mcp-Method` on every request, `MCP-Protocol-Version` when the body declares a protocol version, and `Mcp-Name` for `tools/call`. Compliant clients supply these headers.
-- The SDK modern server API is preview software. Keep the previous production image available for rollback until Claude and Gemini have both passed end-to-end tests.
+- The SDK modern server API is preview software. Keep the previous production image available for rollback until the current build has passed end-to-end compatibility tests with the supported MCP clients.
 
 If the servlet context path or gateway route changes, update both sides together and verify the actual upstream request path.
 
@@ -51,6 +51,16 @@ If the servlet context path or gateway route changes, update both sides together
 - The gateway also protects the public MCP route. MCP-side validation is defense in depth and protects the service if it is reached without the gateway.
 
 The modern servlet transport executes synchronous tool handlers on the request thread, so the existing request-scoped `TokenContext` ThreadLocal is available during backend calls. If outbound calls are changed to asynchronous or reactive execution, explicitly propagate the security context or use an appropriate request-scoped mechanism.
+
+## MCP client compatibility
+
+The server exposes one OAuth-protected Streamable HTTP endpoint for supported remote MCP clients. The Identity Server owns OAuth client registration; no client-specific authentication logic belongs in this service.
+
+- Claude and Gemini have passed the current end-to-end integration tests.
+- Grok custom connectors and Cursor remote MCP are the next compatibility targets. Both use Authorization Code with PKCE and Dynamic Client Registration against the Identity Server.
+- The Identity Server's DCR endpoint is `https://<auth-server>/oauth2/register`, advertised through authorization-server metadata only when explicitly enabled. It accepts only public clients and the exact callbacks documented in the Identity Server README.
+- Cursor's documented callbacks are `https://www.cursor.com/agents/mcp/oauth/callback` and `http://localhost:8787/callback`. Grok's observed callback is `https://grok.com/connectors-oauth-exchange-code/`.
+- Do not change MCP transport, endpoint routing, JWT audience validation or delegated-token forwarding solely to add a client. Verify the OAuth flow and protocol compatibility first.
 
 ## Supported MCP tools
 

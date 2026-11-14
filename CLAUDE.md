@@ -14,7 +14,7 @@ The user-facing frontend is [ikoyski/kanban](https://github.com/ikoyski/kanban).
 - The gateway route forwards `/kanban-mcp/mcp` unchanged.
 - **Do not add `StripPrefix=1`** unless the servlet context path and route are deliberately changed together and tested.
 - Modern HTTP requests require routing headers: `Mcp-Method`, `MCP-Protocol-Version` (when the protocol version is declared in request metadata), and `Mcp-Name` for named operations such as `tools/call`.
-- The modern server API in SDK 2.2.0-M1 is preview software. Preserve the prior production image until Claude and Gemini end-to-end tests pass.
+- The modern server API in SDK 2.2.0-M1 is preview software. Preserve the prior production image until the current build passes end-to-end compatibility tests with the supported MCP clients.
 
 ## Authentication: preserve this model
 
@@ -50,6 +50,14 @@ The JWKS client uses a load-balanced `RestTemplate`, so `security.oauth2.jwk-set
 - `config/McpConfig.java` — load-balanced Kanban RestClient and modern MCP server/Servlet registration.
 - `client/KanbanApiClient.java` — all outbound Kanban API calls, input validation, error mapping and response sanitization.
 - `tools/ModernKanbanToolRepository.java` — MCP tool names, descriptions, schemas and dispatch.
+
+## MCP client compatibility
+
+- Claude and Gemini have passed the current end-to-end integration tests.
+- Grok custom connectors and Cursor remote MCP are the next targets. Both use OAuth Authorization Code with PKCE and DCR at the Identity Server, not custom auth logic in this service.
+- The auth server advertises its DCR endpoint only when `auth.mcp.client-registration.enabled=true`. The Render test profile is the intended place to enable it first.
+- Keep the exact callback allow-list in the Identity Server: Grok `https://grok.com/connectors-oauth-exchange-code/`; Cursor web `https://www.cursor.com/agents/mcp/oauth/callback`; Cursor desktop `http://localhost:8787/callback`.
+- Do not weaken bearer-token validation, audience checks, gateway protection or delegated-token forwarding for client compatibility.
 
 ## MCP tool surface
 
