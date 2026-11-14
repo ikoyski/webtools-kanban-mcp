@@ -8,6 +8,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,6 +28,7 @@ import jakarta.servlet.http.HttpServletResponse;
 public class BearerTokenFilter extends OncePerRequestFilter {
 
     private static final int MAX_HEADER_LENGTH = 8192;
+    private static final Logger log = LoggerFactory.getLogger(BearerTokenFilter.class);
 
     private final JwtDecoder jwtDecoder;
     private final String resourceMetadata;
@@ -47,6 +51,8 @@ public class BearerTokenFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ") || header.length() > MAX_HEADER_LENGTH) {
+            log.warn("mcp_authentication_failed requestId={} reason=missing_or_invalid_bearer_header",
+                    requestId());
             unauthorized(response, "invalid_request", "missing or invalid bearer token");
             return;
         }
@@ -54,10 +60,12 @@ public class BearerTokenFilter extends OncePerRequestFilter {
         try {
             Jwt jwt = jwtDecoder.decode(header.substring(7));
             if (jwt == null) {
+                log.warn("mcp_authentication_failed requestId={} reason=empty_decoded_token", requestId());
                 unauthorized(response, "invalid_token", "invalid bearer token");
                 return;
             }
         } catch (JwtException ex) {
+            log.warn("mcp_authentication_failed requestId={} reason=token_validation_failed", requestId());
             unauthorized(response, "invalid_token", "token validation failed");
             return;
         }
@@ -68,6 +76,11 @@ public class BearerTokenFilter extends OncePerRequestFilter {
         } finally {
             TokenContext.clear();
         }
+    }
+
+    private static String requestId() {
+        String requestId = MDC.get("requestId");
+        return requestId == null || requestId.isBlank() ? "unavailable" : requestId;
     }
 
     private void unauthorized(HttpServletResponse response, String error, String message) throws IOException {
