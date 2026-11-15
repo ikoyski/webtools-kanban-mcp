@@ -6,7 +6,7 @@ on:
   push:
     branches: [ "master", "render-test" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "render-test" ]
 
 jobs:
   build-analyze-push:
