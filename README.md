@@ -1,6 +1,6 @@
 # WebTools Kanban MCP
 
-A Java 21 / Spring Boot 4 MCP server that exposes a deliberately limited set of Kanban operations through the authenticated Kanban REST API. The production endpoint uses the modern stateless MCP 2026-07-28 server implementation from the MCP Java SDK.
+A Java 21 / Spring Boot 4 MCP server that exposes a deliberately limited set of Kanban operations through the authenticated Kanban REST API. It supports modern MCP 2026-07-28 and established 2025-11-25 Streamable HTTP clients through separate stateless transports.
 
 The service is a stateless adapter: it stores no Kanban data and does not use a shared service account. Each MCP request carries the caller's OAuth Bearer access token. The MCP service validates that JWT and forwards the original token to the Kanban backend, which applies the user's authorization rules.
 
@@ -31,12 +31,13 @@ The frontend repository [ikoyski/kanban](https://github.com/ikoyski/kanban) is a
 
 ## MCP protocol and endpoint
 
-- The deployed servlet uses `io.modelcontextprotocol.sdk:mcp:2.2.0-M1` and `HttpServletMcpTransport`.
-- It serves the stateless MCP protocol revision `2026-07-28`, including `server/discover`, `tools/list` and `tools/call`.
-- The servlet context path remains `/kanban-mcp`; the transport endpoint is `/mcp`. The effective service path is `/kanban-mcp/mcp`.
-- The public gateway route forwards `/kanban-mcp/mcp` unchanged. **Do not add `StripPrefix=1`** while the servlet context path remains configured.
-- The modern HTTP transport requires `Mcp-Method` on every request, `MCP-Protocol-Version` when the body declares a protocol version, and `Mcp-Name` for `tools/call`. Compliant clients supply these headers.
-- The SDK modern server API is preview software. Keep the previous production image available for rollback until Claude and Gemini have both passed end-to-end tests.
+- The service supports two MCP Streamable HTTP protocol generations on separate internal servlet endpoints, using the same OAuth-protected public resource URI.
+- Modern MCP 2026-07-28 uses `io.modelcontextprotocol.modern` and `HttpServletMcpTransport` at the internal path `/kanban-mcp/mcp`. It is selected only when the Gateway receives `MCP-Protocol-Version: 2026-07-28`.
+- Established MCP 2025-11-25 and earlier uses the legacy SDK API and `HttpServletStatelessServerTransport` at the internal path `/kanban-mcp/mcp-legacy`. It supports the `initialize` handshake and does not retain server-side session state.
+- The public endpoint remains `/kanban-mcp/mcp`. The Gateway routes an explicit 2026-07-28 version to the modern endpoint and defaults all other requests—including clients that omit the protocol-version header during initialization—to the legacy endpoint using `SetPath`.
+- Both endpoints use the same `BearerTokenFilter`, JWT issuer/signature/audience validation, original caller-token forwarding and Kanban tool semantics. The legacy transport copies the Authorization header into transport context and restores it around each tool call because callbacks may execute on a worker thread.
+- Keep the public OAuth audience and protected-resource metadata URL set to `https://<gateway>/kanban-mcp/mcp`; do not expose `/mcp-legacy` as a separate OAuth resource.
+- **Do not add `StripPrefix=1`** while the servlet context path remains `/kanban-mcp`.
 
 If the servlet context path or gateway route changes, update both sides together and verify the actual upstream request path.
 
@@ -50,7 +51,19 @@ If the servlet context path or gateway route changes, update both sides together
 - MCP-to-backend traffic bypasses the public API Gateway and its Redis gateway rate limiter. Keep backend authentication and authorization enabled; private routing is not an authorization boundary.
 - The gateway also protects the public MCP route. MCP-side validation is defense in depth and protects the service if it is reached without the gateway.
 
-The modern servlet transport executes synchronous tool handlers on the request thread, so the existing request-scoped `TokenContext` ThreadLocal is available during backend calls. If outbound calls are changed to asynchronous or reactive execution, explicitly propagate the security context or use an appropriate request-scoped mechanism.
+The modern servlet transport executes synchronous tool handlers on the request thread, so `TokenContext` is available during backend calls. The legacy stateless transport restores the caller Authorization header from its per-request transport context around each tool callback. If outbound calls are changed to asynchronous or reactive execution, explicitly propagate the security context; ThreadLocal values do not automatically follow work across threads.
+
+## MCP client compatibility
+
+The server exposes one OAuth-protected Streamable HTTP endpoint for supported remote MCP clients. The Identity Server owns OAuth client registration; no client-specific authentication logic belongs in this service.
+
+- Claude has been tested against the modern 2026-07-28 endpoint.
+- Gemini Web and Android have been tested against the established 2025-11-25 endpoint.
+- Grok has been validated on Render test after Gateway routing defaulted clients without modern routing headers to the legacy stateless transport. Board/card listing and card update, move, archive and restore operations succeeded.
+- Cursor remote MCP remains a compatibility target. OAuth uses Authorization Code with PKCE and Dynamic Client Registration against the Identity Server.
+- The Identity Server's restricted DCR endpoint is `https://<auth-server>/oauth2/register`, advertised only when explicitly enabled. Cursor uses a public client; Grok uses a server-generated confidential-client secret restricted to its exact callback. See the Identity Server README for the security rules.
+- Cursor's documented callbacks are `https://www.cursor.com/agents/mcp/oauth/callback` and `http://localhost:8787/callback`. Grok's observed callback is `https://grok.com/connectors-oauth-exchange-code/`.
+- Do not change MCP transport, endpoint routing, JWT audience validation or delegated-token forwarding solely to add a client. Verify the OAuth flow and protocol compatibility first.
 
 ## Supported MCP tools
 
@@ -135,7 +148,7 @@ docker build -t ikoyski/webtools-kanban-mcp .
 docker run --rm -p 8080:8080 ikoyski/webtools-kanban-mcp
 ```
 
-CI runs Maven verification and SonarCloud analysis for the production application and also builds the isolated modern-protocol POC. Docker publishing remains restricted to pushes to `master`.
+CI runs Maven verification and SonarCloud analysis for the production application and also builds the isolated modern-protocol POC. Pull requests targeting `render-test` run the same checks. Docker publishing remains restricted to pushes to `master`.
 
 ## Security and development rules
 
@@ -155,6 +168,7 @@ CI runs Maven verification and SonarCloud analysis for the production applicatio
 - `auth/TokenContext.java` — holds the caller token for the active request.
 - `auth/JwtDecoderConfig.java` — configures JWT signature, issuer and audience validation.
 - `config/McpConfig.java` — configures the load-balanced Kanban RestClient and modern MCP Servlet transport.
+- `config/LegacyMcpConfig.java` — exposes the established stateless Streamable HTTP endpoint and legacy tool callbacks.
 - `client/KanbanApiClient.java` — outbound API calls, validation, error mapping and response sanitization.
 - `tools/ModernKanbanToolRepository.java` — modern MCP tool catalog, descriptions and argument schemas.
 
