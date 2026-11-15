@@ -121,6 +121,11 @@ Docker builds require packaging first:
 docker build -t ikoyski/webtools-kanban-mcp .
 ```
 
+## CI/CD
+
+- Pull requests targeting `master` or `render-test` run Maven verification and the isolated modern-protocol POC checks.
+- Docker publishing remains restricted to pushes to `master`.
+
 ## Definition of done
 
 - Update README and this file when architecture, security, tools, configuration or development workflow changes.
