@@ -148,7 +148,7 @@ docker build -t ikoyski/webtools-kanban-mcp .
 docker run --rm -p 8080:8080 ikoyski/webtools-kanban-mcp
 ```
 
-CI runs Maven verification and SonarCloud analysis for the production application and also builds the isolated modern-protocol POC. Docker publishing remains restricted to pushes to `master`.
+CI runs Maven verification and SonarCloud analysis for the production application and also builds the isolated modern-protocol POC. Pull requests targeting `render-test` run the same checks. Docker publishing remains restricted to pushes to `master`.
 
 ## Security and development rules
 
