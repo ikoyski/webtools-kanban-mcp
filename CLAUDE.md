@@ -8,13 +8,13 @@ The user-facing frontend is [ikoyski/kanban](https://github.com/ikoyski/kanban).
 
 ## MCP protocol and routing
 
-- The production implementation uses the modern MCP Java SDK server in `io.modelcontextprotocol.modern`, with the stateless 2026-07-28 protocol revision.
-- The SDK's `HttpServletMcpTransport` is registered at `/mcp`.
-- The application servlet context path is `/kanban-mcp`; the effective application endpoint is `/kanban-mcp/mcp`.
-- The gateway route forwards `/kanban-mcp/mcp` unchanged.
-- **Do not add `StripPrefix=1`** unless the servlet context path and route are deliberately changed together and tested.
-- Modern HTTP requests require routing headers: `Mcp-Method`, `MCP-Protocol-Version` (when the protocol version is declared in request metadata), and `Mcp-Name` for named operations such as `tools/call`.
-- The modern server API in SDK 2.2.0-M1 is preview software. Preserve the prior production image until Claude and Gemini end-to-end tests pass.
+- The service supports modern MCP 2026-07-28 and established MCP 2025-11-25 (and earlier) over Streamable HTTP, on separate internal servlet endpoints.
+- Modern requests use `io.modelcontextprotocol.modern` and `HttpServletMcpTransport` at `/kanban-mcp/mcp`.
+- Legacy requests use `McpServer` / `McpStatelessSyncServer` and `HttpServletStatelessServerTransport` at `/kanban-mcp/mcp-legacy`; this supports the `initialize` handshake without retaining server-side sessions.
+- The public resource URI remains `/kanban-mcp/mcp`. The Gateway selects modern only for `MCP-Protocol-Version: 2026-07-28`; all other requests default to legacy via `SetPath=/kanban-mcp/mcp-legacy`.
+- Keep the public OAuth audience, protected-resource metadata URL and Authorization header unchanged across both routes. Both endpoints must retain JWT validation and delegated caller-token forwarding.
+- **Do not add `StripPrefix=1`** while the servlet context path is `/kanban-mcp`.
+- Keep tool names, schemas and behavior aligned between `ModernKanbanToolRepository` and `LegacyMcpConfig`.
 
 ## Authentication: preserve this model
 
@@ -48,8 +48,18 @@ The JWKS client uses a load-balanced `RestTemplate`, so `security.oauth2.jwk-set
 - `auth/TokenContext.java` — per-request caller token.
 - `auth/JwtDecoderConfig.java` — RS256, issuer and audience validation.
 - `config/McpConfig.java` — load-balanced Kanban RestClient and modern MCP server/Servlet registration.
+- `config/LegacyMcpConfig.java` — established stateless Streamable HTTP server and legacy tool registrations.
 - `client/KanbanApiClient.java` — all outbound Kanban API calls, input validation, error mapping and response sanitization.
 - `tools/ModernKanbanToolRepository.java` — MCP tool names, descriptions, schemas and dispatch.
+
+## MCP client compatibility
+
+- Claude has been tested with the modern 2026-07-28 protocol; Gemini Web and Android have been tested with the established 2025-11-25 protocol.
+- Grok has been validated on Render test after the Gateway's default legacy route handled requests without modern routing headers. Board/card listing and card update, move, archive and restore operations succeeded.
+- Cursor remote MCP remains a target. OAuth uses Authorization Code with PKCE and DCR at the Identity Server, not custom auth logic in this service.
+- The Auth Server advertises restricted DCR only when `auth.mcp.client-registration.enabled=true`. Homelab and Render test explicitly enable it for controlled Grok/Cursor integration testing; keep it disabled elsewhere.
+- Keep the exact callback allow-list in the Identity Server: Grok `https://grok.com/connectors-oauth-exchange-code/`; Cursor web `https://www.cursor.com/agents/mcp/oauth/callback`; Cursor desktop `http://localhost:8787/callback`.
+- Do not weaken bearer-token validation, audience checks, gateway protection or delegated-token forwarding for client compatibility.
 
 ## MCP tool surface
 
@@ -76,7 +86,7 @@ Tool semantics to preserve:
 ## Implementation conventions
 
 - Keep all HTTP communication in `KanbanApiClient`.
-- Keep MCP tool declarations and dispatch in `ModernKanbanToolRepository`.
+- Keep modern MCP tool declarations and dispatch in `ModernKanbanToolRepository`; keep the legacy tool catalog in `LegacyMcpConfig` aligned with it.
 - Validate IDs, names, priorities, dates and labels before outbound requests.
 - Forward the caller's Bearer token automatically; never log it.
 - Convert expected HTTP failures into concise, safe model-readable messages.
@@ -111,11 +121,16 @@ Docker builds require packaging first:
 docker build -t ikoyski/webtools-kanban-mcp .
 ```
 
+## CI/CD
+
+- Pull requests targeting `master` or `render-test` run Maven verification and the isolated modern-protocol POC checks.
+- Docker publishing remains restricted to pushes to `master`.
+
 ## Definition of done
 
 - Update README and this file when architecture, security, tools, configuration or development workflow changes.
 - Add/update tests for behavior changes.
 - Run `./mvnw clean verify`.
 - Confirm the effective gateway-to-service request path if changing context path or routing.
-- Verify modern discovery/list/call, JWT rejection and caller-token forwarding before production rollout.
+- Verify modern discovery/list/call, legacy initialize/list/call, JWT rejection and caller-token forwarding before production rollout. Regression-test Claude, Gemini Web, Gemini Android and Grok.
 - Never claim a build or end-to-end OAuth flow passed unless it was actually run.
