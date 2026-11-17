@@ -61,6 +61,10 @@ The JWKS client uses a load-balanced `RestTemplate`, so `security.oauth2.jwk-set
 - Keep the exact callback allow-list in the Identity Server: Grok `https://grok.com/connectors-oauth-exchange-code/`; Cursor web `https://www.cursor.com/agents/mcp/oauth/callback`; Cursor desktop `http://localhost:8787/callback`.
 - Do not weaken bearer-token validation, audience checks, gateway protection or delegated-token forwarding for client compatibility.
 
+
+
+**Scope note:** This compatibility matrix applies only to the Kanban MCP resource at `/kanban-mcp/mcp`. It does not establish compatibility for the separate Homelab Management MCP service. Homelab MCP has its own OAuth resource audience and `homelab.read` scope, a separate central-identity allowlist, and currently exposes only its modern Streamable HTTP transport at `/mcp`; it does not share this service's `/mcp-legacy` endpoint. See the Auth Server and private homelab deployment documentation for the named Homelab OAuth clients and their verification status.
+
 ## MCP tool surface
 
 Current tools:

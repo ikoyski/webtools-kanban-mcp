@@ -65,6 +65,10 @@ The server exposes one OAuth-protected Streamable HTTP endpoint for supported re
 - Cursor's documented callbacks are `https://www.cursor.com/agents/mcp/oauth/callback` and `http://localhost:8787/callback`. Grok's observed callback is `https://grok.com/connectors-oauth-exchange-code/`.
 - Do not change MCP transport, endpoint routing, JWT audience validation or delegated-token forwarding solely to add a client. Verify the OAuth flow and protocol compatibility first.
 
+
+
+**Scope note:** This compatibility matrix applies only to the Kanban MCP resource at `/kanban-mcp/mcp`. It does not establish compatibility for the separate Homelab Management MCP service. Homelab MCP has its own OAuth resource audience and `homelab.read` scope, a separate central-identity allowlist, and currently exposes only its modern Streamable HTTP transport at `/mcp`; it does not share this service's `/mcp-legacy` endpoint. See the Auth Server and private homelab deployment documentation for the named Homelab OAuth clients and their verification status.
+
 ## Supported MCP tools
 
 | Tool | Purpose |
